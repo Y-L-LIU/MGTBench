@@ -79,6 +79,11 @@ class ModelBasedDetector(BaseDetector):
 class BaseExperiment(ABC):
     def __init__(self, **kargs) -> None:
         self.loaded = False
+        if "need_split_long_text" in kargs:
+            self.need_split_long_text = kargs["need_split_long_text"]
+        else:
+            self.need_split_long_text = False
+
 
     @abstractmethod 
     def predict(self):
@@ -86,12 +91,8 @@ class BaseExperiment(ABC):
 
     def data_prepare(self, x, y, is_train_data=False):
         x, y = np.array(x), np.array(y)
-        if is_train_data:
-            x = reduce_text(x, self.train_text_mapping)
-        else:
-            x = reduce_text(x, self.test_text_mapping)
-
-        x = np.array(x)
+        if self.need_split_long_text:
+            x = np.array(reduce_text(x, self.train_text_mapping if is_train_data else self.test_text_mapping))
         select_index = ~np.isnan(x)
         x = x[select_index]
         y = y[select_index]
@@ -134,8 +135,9 @@ class BaseExperiment(ABC):
         self.test_label = data['test']['label']
 
         # process long text
-        self.train_text, self.train_text_mapping = process_long_texts(self.train_text)
-        self.test_text, self.test_text_mapping = process_long_texts(self.test_text)
+        if self.need_split_long_text:
+            self.expanding_train_text, self.expanding_train_label, self.train_text_mapping = process_long_texts(self.train_text, self.train_label)
+            self.expanding_test_text, self.expanding_test_label, self.test_text_mapping = process_long_texts(self.test_text, self.test_label)
 
     def launch(self, **config):
         if not self.loaded:
@@ -172,16 +174,20 @@ class DetectOutput:
     clf  = None
 
 
-def process_long_texts(texts):
-    splited_texts = []
+# todo:
+# 支持其他2个experiment
+# 开发其他split算法，reduce算法
+
+def process_long_texts(texts, labels):
+    expanding_texts, expanding_labels = [], []
     mapping = []
     for i in range(len(texts)):
         splited_one_text = split_text(i, texts[i])
-        mapping.append(len(splited_texts))
-        splited_texts.extend(splited_one_text)
-    mapping.append(len(splited_texts))
-    # print(f'mapping: {mapping}')
-    return splited_texts, mapping
+        mapping.append(len(expanding_texts))
+        expanding_texts.extend(splited_one_text)
+        expanding_labels.extend([labels[i]] * len(splited_one_text))
+    mapping.append(len(expanding_texts))
+    return expanding_texts, expanding_labels, mapping
 
 MAX_WORD_NUM = 300
 
@@ -190,9 +196,10 @@ def split_text(i, text):
     # print(f"index {i}, len(words): {len(words)}")
     if len(words) > MAX_WORD_NUM:
         splited_text = []
-        for j in range(math.ceil(len(words)/MAX_WORD_NUM)):
-            # splited_text.append(' '.join(words[j*MAX_WORD_NUM:(j+1)*MAX_WORD_NUM]))
-            splited_text.append(' '.join(words[j*MAX_WORD_NUM:min((j+1)*MAX_WORD_NUM, len(words))]))
+        for j in range(math.floor(len(words)/MAX_WORD_NUM)):
+        # for j in range(math.ceil(len(words)/MAX_WORD_NUM)):
+            splited_text.append(' '.join(words[j*MAX_WORD_NUM:(j+1)*MAX_WORD_NUM]))
+            # splited_text.append(' '.join(words[j*MAX_WORD_NUM:min((j+1)*MAX_WORD_NUM, len(words))]))
         return splited_text
     else:
         return [text]
