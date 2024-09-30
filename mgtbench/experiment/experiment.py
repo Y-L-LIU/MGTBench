@@ -11,7 +11,7 @@ class ThresholdExperiment(BaseExperiment):
     _ALLOWED_detector = ['ll', 'rank', 'rankGLTR', 'entropy']
 
     def __init__(self, detector, **kargs) -> None:
-        super().__init__()
+        super().__init__(**kargs)
         self.detector = [detector] if isinstance(detector, MetricBasedDetector) else detector
         if not self.detector:
             raise ValueError('You should pass a list of detector to an experiment')
@@ -24,9 +24,11 @@ class ThresholdExperiment(BaseExperiment):
                 print(detector.name, 'is not for this experiment')
                 continue
             print('Predict training data')
-            x_train, y_train = self.data_prepare(detector.detect(self.train_text), self.train_label, True)
+            train_text = self.expanding_train_text if self.need_split_long_text else self.train_text
+            x_train, y_train = self.data_prepare(detector.detect(train_text), self.train_label, True)
             print('Predict testing data')
-            x_test, y_test = self.data_prepare(detector.detect(self.test_text), self.test_label)
+            test_text = self.expanding_test_text if self.need_split_long_text else self.test_text
+            x_test, y_test = self.data_prepare(detector.detect(test_text), self.test_label)
             print('Run classification for results')
             clf = LogisticRegression(random_state=0).fit(x_train, y_train)
             train_result = self.run_clf(clf, x_train, y_train)
@@ -70,7 +72,7 @@ class PerturbExperiment(BaseExperiment):
     '''
     _ALLOWED_detector = ['detectGPT', 'NPR', 'LRR' ]
     def __init__(self, detector, **kargs) -> None:
-        super().__init__()
+        super().__init__(**kargs)
         self.detector = [detector] if isinstance(detector, PerturbBasedDetector) else detector
         if not self.detector:
             raise ValueError('You should pass a list of detector to an experiment')
@@ -87,9 +89,11 @@ class PerturbExperiment(BaseExperiment):
 
             self.perturb_config.update(kargs)
             print('Predict training data')
-            x_train, y_train = self.data_prepare(detector.detect(self.train_text, self.train_label, self.perturb_config),self.train_label, True)
+            train_text = self.expanding_train_text if self.need_split_long_text else self.train_text
+            x_train, y_train = self.data_prepare(detector.detect(train_text, self.train_label, self.perturb_config),self.train_label, True)
             print('Predict testing data')
-            x_test, y_test   = self.data_prepare(detector.detect(self.test_text, self.test_label, self.perturb_config), self.test_label)
+            test_text = self.expanding_test_text if self.need_split_long_text else self.test_text
+            x_test, y_test   = self.data_prepare(detector.detect(test_text, self.test_label, self.perturb_config), self.test_label)
             print('Run classification for results')
             clf = LogisticRegression(random_state=0).fit(x_train, y_train)
             train_result = self.run_clf(clf, x_train, y_train)
@@ -125,7 +129,7 @@ class SupervisedExperiment(BaseExperiment):
     '''
     _ALLOWED_detector = ['OpenAI-D', 'ConDA', 'ChatGPT-D', "LM-D" ]
     def __init__(self, detector, **kargs) -> None:
-        super().__init__()
+        super().__init__(**kargs)
         self.detector = [detector] if isinstance(detector, SupervisedDetector) else detector
         if not self.detector:
             raise ValueError('You should pass a list of detector to an experiment')
@@ -139,8 +143,10 @@ class SupervisedExperiment(BaseExperiment):
                 print(detector.name, 'is not for it')
                 continue
             self.supervise_config.update(kargs)
+            train_text = self.expanding_train_text if self.need_split_long_text else self.train_text
+            train_label = self.expanding_train_label if self.need_split_long_text else self.train_label
             if self.supervise_config.need_finetune:
-                data_train = {'text':self.train_text, 'label':self.train_label}
+                data_train = {'text':train_text, 'label':train_label}
                 detector.finetune(data_train, self.supervise_config)
                 print('Fine-tune finished')
             print('Predict training data')
@@ -186,7 +192,7 @@ class DemasqExperiment(BaseExperiment):
     '''
     _ALLOWED_detector = ['demasq']
     def __init__(self, detector, **kargs) -> None:
-        super().__init__()
+        super().__init__(**kargs)
         self.detector = [detector] if isinstance(detector, DemasqDetector) else detector
         if not self.detector:
             raise ValueError('You should pass a list of detector to an experiment')
@@ -200,8 +206,10 @@ class DemasqExperiment(BaseExperiment):
                 print(detector.name, 'is not for it')
                 continue
             self.config.update(kargs)
+            train_text = self.expanding_train_text if self.need_split_long_text else self.train_text
+            train_label = self.expanding_train_label if self.need_split_long_text else self.train_label
             if self.config.need_finetune:
-                data_train = {'text':self.train_text, 'label':self.train_label}
+                data_train = {'text':train_text, 'label':train_label}
                 detector.finetune(data_train, self.config)
             
             logits = detector.detect(self.train_text)
@@ -215,7 +223,7 @@ class DemasqExperiment(BaseExperiment):
 class GPTZeroExperiment(BaseExperiment):
     _ALLOWED_detector = ['GPTZero']
     def __init__(self, detector, **kargs) -> None:
-        super().__init__()
+        super().__init__(**kargs)
         self.detector = [detector] if isinstance(detector, DemasqDetector) else detector
         if not self.detector:
             raise ValueError('You should pass a list of detector to an experiment')

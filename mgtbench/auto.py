@@ -48,6 +48,11 @@ class ModelBasedDetector(BaseDetector):
 class BaseExperiment(ABC):
     def __init__(self, **kargs) -> None:
         self.loaded = False
+        if "need_split_long_text" in kargs:
+            self.need_split_long_text = kargs["need_split_long_text"]
+        else:
+            self.need_split_long_text = False
+
 
     @abstractmethod 
     def predict(self):
@@ -55,12 +60,8 @@ class BaseExperiment(ABC):
 
     def data_prepare(self, x, y, is_train_data=False):
         x, y = np.array(x), np.array(y)
-        if is_train_data:
-            x = reduce_text(x, self.train_text_mapping)
-        else:
-            x = reduce_text(x, self.test_text_mapping)
-
-        x = np.array(x)
+        if self.need_split_long_text:
+            x = np.array(reduce_text(x, self.train_text_mapping if is_train_data else self.test_text_mapping))
         select_index = ~np.isnan(x)
         x = x[select_index]
         y = y[select_index]
@@ -137,46 +138,17 @@ class DetectOutput:
     test: Metric = None
     clf  = None
 
-class AutoDetector:
-    _detector_mapping = DETECTOR_MAPPING
-
-    @classmethod
-    def from_detector_name(cls, name, *args, **kargs) -> BaseDetector:
-        if name not in cls._detector_mapping:
-            raise ValueError(f"Unrecognized detector name: {name}, name should be one of", cls._detector_mapping.keys())
-        metric_class_path = cls._detector_mapping[name]
-        module_name, class_name = metric_class_path.rsplit('.', 1)
-        
-        # Dynamically import the module and retrieve the class
-        metric_module = __import__(module_name, fromlist=[class_name])
-        metric_class = getattr(metric_module, class_name)
-        return metric_class(name,*args, **kargs)
-    
-
-class AutoExperiment:
-    _experiment_mapping = EXPERIMENT_MAPPING
-
-    @classmethod
-    def from_experiment_name(cls, experiment_name, detector, *args, **kargs) -> BaseExperiment:
-        if experiment_name not in cls._experiment_mapping:
-            raise ValueError(f"Unrecognized metric name: {experiment_name}")
-        experiment_class_path = cls._experiment_mapping[experiment_name]
-        module_name, class_name = experiment_class_path.rsplit('.', 1)
-        # Dynamically import the module and retrieve the class
-        experiment_module = __import__(module_name, fromlist=[class_name])
-        experiment_class = getattr(experiment_module, class_name)
-        return experiment_class(detector, *args, **kargs)
 
 def process_long_texts(texts):
     splited_texts = []
     mapping = []
     for i in range(len(texts)):
         splited_one_text = split_text(i, texts[i])
-        mapping.append(len(splited_texts))
-        splited_texts.extend(splited_one_text)
-    mapping.append(len(splited_texts))
-    # print(f'mapping: {mapping}')
-    return splited_texts, mapping
+        mapping.append(len(expanding_texts))
+        expanding_texts.extend(splited_one_text)
+        expanding_labels.extend([labels[i]] * len(splited_one_text))
+    mapping.append(len(expanding_texts))
+    return expanding_texts, expanding_labels, mapping
 
 MAX_WORD_NUM = 300
 
@@ -185,9 +157,10 @@ def split_text(i, text):
     # print(f"index {i}, len(words): {len(words)}")
     if len(words) > MAX_WORD_NUM:
         splited_text = []
-        for j in range(math.ceil(len(words)/MAX_WORD_NUM)):
-            # splited_text.append(' '.join(words[j*MAX_WORD_NUM:(j+1)*MAX_WORD_NUM]))
-            splited_text.append(' '.join(words[j*MAX_WORD_NUM:min((j+1)*MAX_WORD_NUM, len(words))]))
+        for j in range(math.floor(len(words)/MAX_WORD_NUM)):
+        # for j in range(math.ceil(len(words)/MAX_WORD_NUM)):
+            splited_text.append(' '.join(words[j*MAX_WORD_NUM:(j+1)*MAX_WORD_NUM]))
+            # splited_text.append(' '.join(words[j*MAX_WORD_NUM:min((j+1)*MAX_WORD_NUM, len(words))]))
         return splited_text
     else:
         return [text]
